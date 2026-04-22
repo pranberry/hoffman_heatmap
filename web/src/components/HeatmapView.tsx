@@ -62,7 +62,9 @@ export function HeatmapView({
   const isDark = useDarkMode();
 
   const [period,         setPeriod]         = useState<Period>('1D');
-  const [showAll,        setShowAll]         = useState(true);
+  const [showAll,        setShowAll]         = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 768
+  );
   const [showPrice,      setShowPrice]       = useState(false);
   const [selectedSector, setSelectedSector]  = useState<string | null>(null);
   const [hoveredStock,   setHoveredStock]    = useState<HeatmapStockData | null>(null);
@@ -139,13 +141,19 @@ export function HeatmapView({
   const treemapData = useMemo(() => {
     if (!filteredData || dimensions.width === 0) return null;
     const isSingle = filteredData.sectors.length === 1;
+    // Flatten the size ratio between mega-caps and mid-caps on narrow screens
+    // so a handful of giants don't consume the whole viewport.
+    const sizeExp = dimensions.width < 768 ? 0.5 : 1;
 
     const root = d3
       .hierarchy({
         name: 'root',
         children: filteredData.sectors.map(sector => ({
           name: sector.name,
-          children: sector.stocks.map(s => ({ ...s, value: Math.max(s.mcap, 0.01) })),
+          children: sector.stocks.map(s => ({
+            ...s,
+            value: Math.pow(Math.max(s.mcap, 0.01), sizeExp),
+          })),
         })),
       })
       .sum((d: any) => d.value ?? 0)
@@ -244,10 +252,10 @@ export function HeatmapView({
     >
       {/* ── Header ── */}
       <div
-        className="flex justify-between items-center px-4 py-2 flex-shrink-0"
+        className="flex flex-wrap justify-between items-center gap-y-2 gap-x-3 px-4 py-2 flex-shrink-0"
         style={{ borderBottom: `1px solid ${theme.headerBorder}` }}
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
           <span className="text-base font-semibold truncate" style={{ color: theme.text }}>{indexLabel}</span>
           <span className="text-sm font-bold font-mono flex-shrink-0" style={{ color: indexChange >= 0 ? '#22c55e' : '#ef4444' }}>
             {indexChange >= 0 ? '+' : ''}{indexChange.toFixed(2)}%
@@ -260,7 +268,7 @@ export function HeatmapView({
           <span className="text-xs flex-shrink-0 hidden lg:block" style={{ color: theme.subText }}>{data?.lastUpdated}</span>
         </div>
 
-        <div className="flex gap-2 items-center flex-shrink-0">
+        <div className="flex flex-wrap gap-2 items-center">
           {leftControls}
 
           <SegmentedControl
