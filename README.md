@@ -2,6 +2,10 @@
 
 Static browser heatmap for TSX, S&P 500, and NASDAQ-100. No backend — data is pre-computed every 15 minutes by GitHub Actions and committed as static JSON, then served via GitHub Pages.
 
+![TSX stocks](https://img.shields.io/badge/TSX%20stocks-222-green) ![S&P 500](https://img.shields.io/badge/S%26P%20500-500%2B-blue) ![NASDAQ-100](https://img.shields.io/badge/NASDAQ--100-100-blue)</br>
+<img src="./screenshots/screenshot_heatmap.png" alt="screenshot_heatmap" width="600"/>
+
+
 ## Stack
 
 - Vite + React 19 + TypeScript
@@ -23,7 +27,7 @@ resources/
   XIC_holdings.csv     BlackRock TSX holdings (local fallback)
 ```
 
-## Develop
+## Develop and Run Locally
 
 ```bash
 cd web
@@ -32,9 +36,3 @@ npm run dev            # local dev server
 npm run build          # type-check + production build
 npm run fetch-data     # refresh public/data/*.json
 ```
-
-## Deploy
-
-Push to `main`. `deploy-web.yml` builds `web/` and publishes `web/dist` to GitHub Pages.
-
-GitHub Pages must be configured once: **Settings → Pages → Source: GitHub Actions**.
