@@ -40,7 +40,7 @@ export function App() {
 
         <div className="ml-auto pr-4 flex items-center gap-2">
           <a
-            href="https://github.com/pranberry/hoffman"
+            href="https://github.com/pranberry/hoffman_heatmap"
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs hover:underline"
