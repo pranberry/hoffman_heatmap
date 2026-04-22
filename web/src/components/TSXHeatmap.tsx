@@ -14,7 +14,7 @@ export function TSXHeatmap() {
     let mounted = true;
     async function fetchData() {
       try {
-        const res = await fetch('/data/tsx.json');
+        const res = await fetch(`${import.meta.env.BASE_URL}data/tsx.json`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: HeatmapData = await res.json();
         if (mounted) { setData(json); setLoading(false); }

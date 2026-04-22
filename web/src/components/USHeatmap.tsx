@@ -20,8 +20,8 @@ export function USHeatmap() {
     async function fetchData() {
       try {
         const [sp500Res, nasdaqRes] = await Promise.all([
-          fetch('/data/sp500.json'),
-          fetch('/data/nasdaq.json'),
+          fetch(`${import.meta.env.BASE_URL}data/sp500.json`),
+          fetch(`${import.meta.env.BASE_URL}data/nasdaq.json`),
         ]);
         if (mounted) {
           if (sp500Res.ok)  setSp500Data(await sp500Res.json());
