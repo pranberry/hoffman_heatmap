@@ -2,6 +2,8 @@
 
 Static browser heatmap for TSX, S&P 500, and NASDAQ-100. No backend — data is pre-computed every 15 minutes by GitHub Actions and committed as static JSON, then served via GitHub Pages.
 
+View Live: https://pranberry.github.io/hoffman_heatmap/
+
 ![TSX stocks](https://img.shields.io/badge/TSX%20stocks-222-green) ![S&P 500](https://img.shields.io/badge/S%26P%20500-500%2B-blue) ![NASDAQ-100](https://img.shields.io/badge/NASDAQ--100-100-blue)</br>
 <img src="./screenshots/screenshot_heatmap.png" alt="screenshot_heatmap" width="600"/>
 
