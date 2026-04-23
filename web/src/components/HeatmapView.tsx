@@ -265,7 +265,11 @@ export function HeatmapView({
             {isLive ? 'LIVE' : 'MARKET CLOSED'}
           </span>
           <span className="text-xs flex-shrink-0" style={{ color: theme.subText }}>{displayCount} stocks</span>
-          <span className="text-xs flex-shrink-0 hidden lg:block" style={{ color: theme.subText }}>{data?.lastUpdated}</span>
+          {data?.lastUpdated && (
+            <span className="text-xs flex-shrink-0" style={{ color: theme.subText }}>
+              Updated {data.lastUpdated} · data delayed by ~15 minutes
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">

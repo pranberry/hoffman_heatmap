@@ -1,12 +1,8 @@
 name: Fetch Heatmap Data
 
 on:
-  # Every 15 minutes during market hours (Mon–Fri, 13:00–21:00 UTC)
-  # Covers 9:30 AM–4:00 PM ET (EDT=UTC-4, EST=UTC-5) with buffer
   schedule:
-    - cron: '*/15 13-21 * * 1-5'
-
-  # Allow manual trigger from the Actions tab (useful for debugging)
+    - cron: '*/5 13-22 * * 1-5'
   workflow_dispatch:
 
 permissions:
