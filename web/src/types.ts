@@ -6,6 +6,10 @@ export interface HeatmapStockData {
   weight: number;
   changeDay: number;
   changeMonth: number;
+  // Optional: only present in data fetched after these periods were added
+  change3Month?: number;
+  change6Month?: number;
+  changeYTD?: number;
   changeYear: number;
 }
 

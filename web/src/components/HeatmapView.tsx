@@ -5,7 +5,7 @@ import { useDarkMode } from '../hooks/useDarkMode';
 
 // ── Color helpers ──────────────────────────────────────────────────────────────
 
-const COLOR_CAPS: Record<string, number> = { '1D': 4, '1M': 15, '1Y': 30 };
+const COLOR_CAPS: Record<string, number> = { '1D': 4, '1M': 15, '3M': 20, '6M': 25, 'YTD': 25, '1Y': 30 };
 
 function getColor(change: number, period: string, isDark: boolean): string {
   const cap     = COLOR_CAPS[period];
@@ -35,8 +35,19 @@ function getTextColor(change: number, period: string, isDark: boolean): string {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type Period    = '1D' | '1M' | '1Y';
-type ChangeKey = 'changeDay' | 'changeMonth' | 'changeYear';
+type Period    = '1D' | '1M' | '3M' | '6M' | 'YTD' | '1Y';
+type ChangeKey = 'changeDay' | 'changeMonth' | 'change3Month' | 'change6Month' | 'changeYTD' | 'changeYear';
+
+const PERIODS: Period[] = ['1D', '1M', '3M', '6M', 'YTD', '1Y'];
+
+const CHANGE_KEYS: Record<Period, ChangeKey> = {
+  '1D':  'changeDay',
+  '1M':  'changeMonth',
+  '3M':  'change3Month',
+  '6M':  'change6Month',
+  'YTD': 'changeYTD',
+  '1Y':  'changeYear',
+};
 
 export interface HeatmapViewProps {
   data:           HeatmapData | null;
@@ -105,7 +116,7 @@ export function HeatmapView({
     tooltipShadow:        isDark ? '0 10px 15px -3px rgba(0,0,0,0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)',
   }), [isDark]);
 
-  const changeKey: ChangeKey = period === '1D' ? 'changeDay' : period === '1M' ? 'changeMonth' : 'changeYear';
+  const changeKey: ChangeKey = CHANGE_KEYS[period];
 
   const isLive = !!(data && data.isMarketOpen === true);
 
@@ -175,7 +186,7 @@ export function HeatmapView({
       .map(sector => {
         const totalW = sector.stocks.reduce((s, st) => s + st.weight, 0);
         const change = totalW > 0
-          ? sector.stocks.reduce((s, st) => s + st[changeKey] * st.weight, 0) / totalW
+          ? sector.stocks.reduce((s, st) => s + (st[changeKey] ?? 0) * st.weight, 0) / totalW
           : 0;
         return { name: sector.name, change: Math.round(change * 100) / 100 };
       })
@@ -186,7 +197,7 @@ export function HeatmapView({
     if (!data) return 0;
     let tw = 0, ws = 0;
     for (const sector of data.sectors)
-      for (const stock of sector.stocks) { tw += stock.weight; ws += stock[changeKey] * stock.weight; }
+      for (const stock of sector.stocks) { tw += stock.weight; ws += (stock[changeKey] ?? 0) * stock.weight; }
     return tw > 0 ? Math.round((ws / tw) * 100) / 100 : 0;
   }, [data, changeKey]);
 
@@ -282,7 +293,7 @@ export function HeatmapView({
           />
 
           <div className="flex gap-1">
-            {(['1D', '1M', '1Y'] as const).map(p => (
+            {PERIODS.map(p => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
@@ -358,7 +369,7 @@ export function HeatmapView({
               (sector.children || []).map((leaf: any) => {
                 const w = leaf.x1 - leaf.x0;
                 const h = leaf.y1 - leaf.y0;
-                const change     = leaf.data[changeKey] as number;
+                const change     = (leaf.data[changeKey] ?? 0) as number;
                 const bg         = getColor(change, period, isDark);
                 const fg         = getTextColor(change, period, isDark);
                 const showTicker = w > 28 && h > 16;
@@ -437,11 +448,7 @@ export function HeatmapView({
             </div>
           ))}
           <div style={{ borderTop: `1px solid ${theme.headerBorder}`, margin: '6px 0' }} />
-          {([
-            { label: '1D', val: hoveredStock.changeDay   },
-            { label: '1M', val: hoveredStock.changeMonth },
-            { label: '1Y', val: hoveredStock.changeYear  },
-          ] as const).map(row => (
+          {PERIODS.map(p => ({ label: p, val: hoveredStock[CHANGE_KEYS[p]] ?? 0 })).map(row => (
             <div
               key={row.label}
               className="flex justify-between text-xs font-mono py-0.5"

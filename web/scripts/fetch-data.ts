@@ -39,6 +39,9 @@ interface StockData {
   weight: number;
   changeDay: number;
   changeMonth: number;
+  change3Month: number;
+  change6Month: number;
+  changeYTD: number;
   changeYear: number;
 }
 
@@ -86,24 +89,40 @@ async function fetchStock(h: Holding): Promise<StockData | null> {
     const changeDay = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
     const mcap      = (quote.marketCap ?? 0) / 1e9;
 
-    let changeMonth = 0;
-    let changeYear  = 0;
+    let changeMonth  = 0;
+    let change3Month = 0;
+    let change6Month = 0;
+    let changeYTD    = 0;
+    let changeYear   = 0;
 
     if (history?.quotes?.length) {
       const quotes = history.quotes.filter((q: any) => q.close != null);
       if (quotes.length > 0) {
         changeYear = quotes[0].close ? ((price - quotes[0].close) / quotes[0].close) * 100 : 0;
 
-        const oneMonthAgo = new Date(now);
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-        const monthTarget = oneMonthAgo.getTime();
-        let best = quotes[0];
-        let bestDiff = Infinity;
-        for (const q of quotes) {
-          const diff = Math.abs(new Date(q.date).getTime() - monthTarget);
-          if (diff < bestDiff) { bestDiff = diff; best = q; }
-        }
-        changeMonth = best.close ? ((price - best.close) / best.close) * 100 : 0;
+        // % change vs the close nearest to the target date
+        const pctSince = (target: Date): number => {
+          const t = target.getTime();
+          let best = quotes[0];
+          let bestDiff = Infinity;
+          for (const q of quotes) {
+            const diff = Math.abs(new Date(q.date).getTime() - t);
+            if (diff < bestDiff) { bestDiff = diff; best = q; }
+          }
+          return best.close ? ((price - best.close) / best.close) * 100 : 0;
+        };
+
+        const monthsAgo = (n: number) => {
+          const d = new Date(now);
+          d.setMonth(d.getMonth() - n);
+          return d;
+        };
+
+        changeMonth  = pctSince(monthsAgo(1));
+        change3Month = pctSince(monthsAgo(3));
+        change6Month = pctSince(monthsAgo(6));
+        // YTD: measured from the closing price nearest to Jan 1
+        changeYTD    = pctSince(new Date(now.getFullYear(), 0, 1));
       }
     }
 
@@ -113,9 +132,12 @@ async function fetchStock(h: Holding): Promise<StockData | null> {
       price:       Math.round(price * 100) / 100,
       mcap:        Math.round(mcap * 100) / 100,
       weight:      h.weight,
-      changeDay:   Math.round(changeDay * 100) / 100,
-      changeMonth: Math.round(changeMonth * 100) / 100,
-      changeYear:  Math.round(changeYear * 100) / 100,
+      changeDay:    Math.round(changeDay * 100) / 100,
+      changeMonth:  Math.round(changeMonth * 100) / 100,
+      change3Month: Math.round(change3Month * 100) / 100,
+      change6Month: Math.round(change6Month * 100) / 100,
+      changeYTD:    Math.round(changeYTD * 100) / 100,
+      changeYear:   Math.round(changeYear * 100) / 100,
     };
   } catch (e) {
     console.error(`  FAIL ${h.yahooTicker}: ${(e as Error).message}`);
