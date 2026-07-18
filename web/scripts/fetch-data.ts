@@ -50,11 +50,24 @@ interface SectorData {
   stocks: StockData[];
 }
 
+interface IndexChanges {
+  changeDay: number;
+  changeMonth: number;
+  change3Month: number;
+  change6Month: number;
+  changeYTD: number;
+  changeYear: number;
+}
+
 interface HeatmapJSON {
   lastUpdated: string;
   tickerCount: number;
   sectors: SectorData[];
   isMarketOpen?: boolean;
+  // True benchmark index returns. A weight-averaged sum of constituent
+  // trailing returns uses *today's* weights, which overweights recent
+  // winners and inflates multi-month numbers.
+  indexChanges?: IndexChanges;
 }
 
 // ── Yahoo Finance ──────────────────────────────────────────────────────────────
@@ -100,16 +113,16 @@ async function fetchStock(h: Holding): Promise<StockData | null> {
       if (quotes.length > 0) {
         changeYear = quotes[0].close ? ((price - quotes[0].close) / quotes[0].close) * 100 : 0;
 
-        // % change vs the close nearest to the target date
+        // % change vs the last close on or before the target date (Yahoo's
+        // baseline convention); falls back to the earliest close available
         const pctSince = (target: Date): number => {
           const t = target.getTime();
-          let best = quotes[0];
-          let bestDiff = Infinity;
+          let base = quotes[0];
           for (const q of quotes) {
-            const diff = Math.abs(new Date(q.date).getTime() - t);
-            if (diff < bestDiff) { bestDiff = diff; best = q; }
+            if (new Date(q.date).getTime() <= t) base = q;
+            else break;
           }
-          return best.close ? ((price - best.close) / best.close) * 100 : 0;
+          return base.close ? ((price - base.close) / base.close) * 100 : 0;
         };
 
         const monthsAgo = (n: number) => {
@@ -454,9 +467,9 @@ async function main() {
   const nasdaqHoldings = await tryLoad('NDX', () => loadNASDAQ100Holdings(sp500Holdings ?? []));
 
   const indexes = [
-    { label: 'TSX',        file: 'tsx.json',    holdings: tsxHoldings,    tz: 'America/Toronto',  holidays: CA_HOLIDAYS },
-    { label: 'S&P 500',    file: 'sp500.json',  holdings: sp500Holdings,  tz: 'America/New_York', holidays: US_HOLIDAYS },
-    { label: 'NASDAQ-100', file: 'nasdaq.json', holdings: nasdaqHoldings, tz: 'America/New_York', holidays: US_HOLIDAYS },
+    { label: 'TSX',        file: 'tsx.json',    holdings: tsxHoldings,    benchmark: '^GSPTSE', tz: 'America/Toronto',  holidays: CA_HOLIDAYS },
+    { label: 'S&P 500',    file: 'sp500.json',  holdings: sp500Holdings,  benchmark: '^GSPC',   tz: 'America/New_York', holidays: US_HOLIDAYS },
+    { label: 'NASDAQ-100', file: 'nasdaq.json', holdings: nasdaqHoldings, benchmark: '^NDX',    tz: 'America/New_York', holidays: US_HOLIDAYS },
   ];
 
   const loaded = indexes.filter(ix => ix.holdings !== null);
@@ -484,6 +497,26 @@ async function main() {
   const written: string[] = [];
   for (const ix of loaded) {
     const built = await buildIndex(ix.label, ix.holdings!, resultMap, ix.tz, ix.holidays);
+
+    // Headline number: the real benchmark index return, not a weighted
+    // average of constituents (see IndexChanges comment above).
+    const bench = await fetchStock({
+      ticker: ix.benchmark, yahooTicker: ix.benchmark,
+      name: '', sector: '', weight: 0, mcapHint: 0,
+    });
+    if (bench) {
+      built.indexChanges = {
+        changeDay:    bench.changeDay,
+        changeMonth:  bench.changeMonth,
+        change3Month: bench.change3Month,
+        change6Month: bench.change6Month,
+        changeYTD:    bench.changeYTD,
+        changeYear:   bench.changeYear,
+      };
+    } else {
+      console.warn(`  WARNING: benchmark ${ix.benchmark} failed; ${ix.label} header falls back to weighted average`);
+    }
+
     fs.writeFileSync(path.join(DATA_DIR, ix.file), JSON.stringify(built));
     written.push(`  ${ix.file} — ${built.tickerCount} stocks`);
   }

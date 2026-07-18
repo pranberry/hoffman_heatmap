@@ -195,6 +195,10 @@ export function HeatmapView({
 
   const indexChange = useMemo(() => {
     if (!data) return 0;
+    // Prefer the true benchmark return; a current-weight average of
+    // constituent trailing returns overstates multi-month periods.
+    const direct = data.indexChanges?.[changeKey];
+    if (direct != null) return direct;
     let tw = 0, ws = 0;
     for (const sector of data.sectors)
       for (const stock of sector.stocks) { tw += stock.weight; ws += (stock[changeKey] ?? 0) * stock.weight; }
