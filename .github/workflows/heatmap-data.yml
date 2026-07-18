@@ -2,7 +2,13 @@ name: Fetch Heatmap Data
 
 on:
   schedule:
-    - cron: '*/5 13-22 * * 1-5'
+    # Weekdays, market open (9:30 AM ET) through 7:30 PM ET, every 5 minutes.
+    # GitHub cron is UTC, so cover both EDT (UTC-4) and EST (UTC-5):
+    # 13:30 UTC → 00:30 UTC next day. The edges overshoot by an hour in one
+    # DST regime or the other; the fetch script knows actual market hours.
+    - cron: '30,35,40,45,50,55 13 * * 1-5'
+    - cron: '*/5 14-23 * * 1-5'
+    - cron: '0,5,10,15,20,25,30 0 * * 2-6'
   workflow_dispatch:
 
 permissions:
@@ -22,7 +28,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 

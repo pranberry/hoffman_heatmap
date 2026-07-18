@@ -267,7 +267,7 @@ export function HeatmapView({
           <span className="text-xs flex-shrink-0" style={{ color: theme.subText }}>{displayCount} stocks</span>
           {data?.lastUpdated && (
             <span className="text-xs flex-shrink-0" style={{ color: theme.subText }}>
-              Updated {data.lastUpdated} · data delayed by ~15 minutes
+              Updated {data.lastUpdated} · data may be delayed by ~5 min
             </span>
           )}
         </div>

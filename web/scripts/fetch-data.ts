@@ -123,15 +123,16 @@ async function fetchStock(h: Holding): Promise<StockData | null> {
   }
 }
 
-async function fetchAll(holdings: Holding[], concurrency = 15): Promise<StockData[]> {
-  const results: StockData[] = [];
+// Keyed by yahooTicker: display tickers collide across exchanges (T = AT&T, T.TO = Telus)
+async function fetchAll(holdings: Holding[], concurrency = 15): Promise<Map<string, StockData>> {
+  const results = new Map<string, StockData>();
   let idx = 0;
 
   async function worker() {
     while (idx < holdings.length) {
       const i = idx++;
       const res = await fetchStock(holdings[i]);
-      if (res) results.push(res);
+      if (res) results.set(holdings[i].yahooTicker, res);
       if (idx % 50 === 0) console.log(`  ... ${idx}/${holdings.length}`);
     }
   }
@@ -227,28 +228,36 @@ interface BlackRockHoldingsSource {
   normalize:      TickerNormalizer;
 }
 
+function findCsvHeader(csvText: string): number {
+  const lines = csvText.split('\n');
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    if (lines[i].includes('Ticker') && lines[i].includes('Name') && lines[i].includes('Sector')) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 async function loadBlackRockHoldings(src: BlackRockHoldingsSource): Promise<Holding[]> {
-  let csvText: string;
+  let csvText: string | null = null;
+  let headerIdx = -1;
   try {
     console.log(`Fetching ${src.label} holdings from BlackRock...`);
     const resp = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     csvText = await resp.text();
+    // BlackRock sometimes serves an HTML bot-check page with HTTP 200 and a
+    // text/csv content type — validate the payload, not just the status code.
+    headerIdx = findCsvHeader(csvText);
+    if (headerIdx === -1) throw new Error('no CSV header in response (likely HTML bot-check page)');
   } catch (e) {
-    console.log(`BlackRock fetch failed for ${src.label}, using local CSV...`);
+    console.log(`BlackRock fetch failed for ${src.label} (${(e as Error).message}), using local CSV...`);
     csvText = fs.readFileSync(src.fallbackPath, 'utf-8');
-  }
-
-  const lines = csvText.split('\n');
-  let headerIdx = -1;
-  for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    if (lines[i].includes('Ticker') && lines[i].includes('Name') && lines[i].includes('Sector')) {
-      headerIdx = i;
-      break;
-    }
+    headerIdx = findCsvHeader(csvText);
   }
   if (headerIdx === -1) throw new Error(`${src.label}: could not find CSV header`);
 
+  const lines = csvText.split('\n');
   const parsed = parse(lines.slice(headerIdx).join('\n'), {
     columns: true, skip_empty_lines: true, relax_column_count: true, trim: true,
   });
@@ -397,6 +406,19 @@ async function buildIndex(
   };
 }
 
+// Each index loads independently: a failure in one (even its local fallback)
+// must not prevent the others from being fetched and written.
+async function tryLoad(label: string, loader: () => Promise<Holding[]>): Promise<Holding[] | null> {
+  try {
+    const holdings = await loader();
+    console.log(`${label}: ${holdings.length} holdings`);
+    return holdings;
+  } catch (e) {
+    console.error(`${label}: FAILED to load holdings — ${(e as Error).message}`);
+    return null;
+  }
+}
+
 async function main() {
   console.log('=== Hoffman Heatmap Data Fetch ===');
   console.log(`Time: ${new Date().toISOString()}`);
@@ -404,16 +426,23 @@ async function main() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
   // Load holdings from live ETF/index sources (with on-disk fallbacks)
-  const tsxHoldings    = await loadBlackRockHoldings(XIC_SOURCE);
-  console.log(`TSX:    ${tsxHoldings.length} holdings`);
+  const tsxHoldings    = await tryLoad('TSX', () => loadBlackRockHoldings(XIC_SOURCE));
+  const sp500Holdings  = await tryLoad('S&P', () => loadBlackRockHoldings(IVV_SOURCE));
+  // NDX only borrows sector labels from the S&P list; it can build without it
+  const nasdaqHoldings = await tryLoad('NDX', () => loadNASDAQ100Holdings(sp500Holdings ?? []));
 
-  const sp500Holdings  = await loadBlackRockHoldings(IVV_SOURCE);
-  console.log(`S&P:    ${sp500Holdings.length} holdings`);
+  const indexes = [
+    { label: 'TSX',        file: 'tsx.json',    holdings: tsxHoldings,    tz: 'America/Toronto',  holidays: CA_HOLIDAYS },
+    { label: 'S&P 500',    file: 'sp500.json',  holdings: sp500Holdings,  tz: 'America/New_York', holidays: US_HOLIDAYS },
+    { label: 'NASDAQ-100', file: 'nasdaq.json', holdings: nasdaqHoldings, tz: 'America/New_York', holidays: US_HOLIDAYS },
+  ];
 
-  const nasdaqHoldings = await loadNASDAQ100Holdings(sp500Holdings);
-  console.log(`NDX:    ${nasdaqHoldings.length} holdings`);
+  const loaded = indexes.filter(ix => ix.holdings !== null);
+  if (loaded.length === 0) {
+    throw new Error('all indexes failed to load holdings');
+  }
 
-  const allHoldings = [...tsxHoldings, ...sp500Holdings, ...nasdaqHoldings];
+  const allHoldings = loaded.flatMap(ix => ix.holdings!);
   const uniqueTickers = dedup(allHoldings);
   console.log(`Total unique tickers to fetch: ${uniqueTickers.length}`);
 
@@ -425,30 +454,25 @@ async function main() {
   }));
 
   console.log('\nFetching quotes from Yahoo Finance...');
-  const allStocks = await fetchAll(holdingsForFetch);
-  console.log(`Fetched ${allStocks.length}/${uniqueTickers.length} successfully`);
+  const resultMap = await fetchAll(holdingsForFetch);
+  console.log(`Fetched ${resultMap.size}/${uniqueTickers.length} successfully`);
 
-  // Index results by Yahoo ticker for fast lookup
-  const resultMap = new Map<string, StockData>();
-  for (const s of allStocks) {
-    // Find the yahooTicker for this result
-    const match = uniqueTickers.find(t => t.ticker === s.ticker);
-    if (match) resultMap.set(match.yahooTicker, s);
+  // Build and write every index that loaded; skip (and keep the previous
+  // JSON for) any that failed.
+  const written: string[] = [];
+  for (const ix of loaded) {
+    const built = await buildIndex(ix.label, ix.holdings!, resultMap, ix.tz, ix.holidays);
+    fs.writeFileSync(path.join(DATA_DIR, ix.file), JSON.stringify(built));
+    written.push(`  ${ix.file} — ${built.tickerCount} stocks`);
   }
 
-  // Build and write each index
-  const tsx    = await buildIndex('TSX',        tsxHoldings,    resultMap, 'America/Toronto',  CA_HOLIDAYS);
-  const sp500  = await buildIndex('S&P 500',    sp500Holdings,  resultMap, 'America/New_York', US_HOLIDAYS);
-  const nasdaq = await buildIndex('NASDAQ-100', nasdaqHoldings, resultMap, 'America/New_York', US_HOLIDAYS);
-
-  fs.writeFileSync(path.join(DATA_DIR, 'tsx.json'), JSON.stringify(tsx));
-  fs.writeFileSync(path.join(DATA_DIR, 'sp500.json'), JSON.stringify(sp500));
-  fs.writeFileSync(path.join(DATA_DIR, 'nasdaq.json'), JSON.stringify(nasdaq));
-
   console.log(`\nDone! Wrote:`);
-  console.log(`  tsx.json    — ${tsx.tickerCount} stocks`);
-  console.log(`  sp500.json  — ${sp500.tickerCount} stocks`);
-  console.log(`  nasdaq.json — ${nasdaq.tickerCount} stocks`);
+  for (const line of written) console.log(line);
+
+  const failed = indexes.filter(ix => ix.holdings === null);
+  if (failed.length > 0) {
+    console.warn(`\nWARNING: skipped (holdings failed to load): ${failed.map(ix => ix.label).join(', ')}`);
+  }
 }
 
 main().catch(e => {
